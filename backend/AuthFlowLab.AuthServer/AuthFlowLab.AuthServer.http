@@ -31,7 +31,7 @@ Accept: application/json
 {
   "clientId": "worker-service",
   "clientSecret": "worker-secret",
-  "scope": "content.read"
+  "scope": "content.read content.write"
 }
 
 ### Invalid login returns an OAuth-style error

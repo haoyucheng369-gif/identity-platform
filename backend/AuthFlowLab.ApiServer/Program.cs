@@ -44,6 +44,13 @@ builder.Services.AddAuthorization(options =>
             .Contains("content.read", StringComparer.Ordinal);
     }));
 
+    options.AddPolicy("ContentWrite", policy => policy.RequireAssertion(context =>
+    {
+        return context.User.FindAll("scope")
+            .SelectMany(claim => claim.Value.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            .Contains("content.write", StringComparer.Ordinal);
+    }));
+
     options.AddPolicy("ServiceOnly", policy => policy.RequireAssertion(context =>
     {
         return context.User.HasClaim(c => c.Type == "token_type" && c.Value == "service");

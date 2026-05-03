@@ -22,7 +22,7 @@ public sealed class AuthEndpointTests : IClassFixture<AuthServerFactory>
     {
         var response = await _client.PostAsJsonAsync("/auth/login", new
         {
-            username = "user",
+            username = "test-user",
             password = "user123"
         });
 
@@ -37,11 +37,26 @@ public sealed class AuthEndpointTests : IClassFixture<AuthServerFactory>
     }
 
     [Fact]
+    public async Task Login_Returns_AdminWriteScope()
+    {
+        var response = await _client.PostAsJsonAsync("/auth/login", new
+        {
+            username = "test-admin",
+            password = "admin123"
+        });
+
+        response.EnsureSuccessStatusCode();
+        var token = await response.Content.ReadFromJsonAsync<TokenResponse>();
+
+        Assert.Equal("content.read content.write", token?.Scope);
+    }
+
+    [Fact]
     public async Task Login_WithBadPassword_ReturnsInvalidGrant()
     {
         var response = await _client.PostAsJsonAsync("/auth/login", new
         {
-            username = "user",
+            username = "test-user",
             password = "wrong"
         });
 
@@ -58,7 +73,7 @@ public sealed class AuthEndpointTests : IClassFixture<AuthServerFactory>
         {
             clientId = "worker-service",
             clientSecret = "worker-secret",
-            scope = "content.read"
+            scope = "content.read content.write"
         });
 
         response.EnsureSuccessStatusCode();
@@ -66,7 +81,7 @@ public sealed class AuthEndpointTests : IClassFixture<AuthServerFactory>
 
         Assert.NotNull(token);
         Assert.Equal("Bearer", token.TokenType);
-        Assert.Equal("content.read", token.Scope);
+        Assert.Equal("content.read content.write", token.Scope);
         Assert.False(string.IsNullOrWhiteSpace(token.AccessToken));
     }
 
@@ -100,21 +115,46 @@ public sealed class AuthServerFactory : WebApplicationFactory<Program>
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
+        builder.UseContentRoot(FindProjectDirectory("AuthFlowLab.AuthServer"));
         builder.ConfigureAppConfiguration((_, config) =>
         {
             config.AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["Jwt:PrivateKeyPath"] = _privateKeyPath,
                 ["Auth:AccessTokenMinutes"] = "10",
-                ["Auth:Users:0:Username"] = "user",
-                ["Auth:Users:0:Password"] = "user123",
-                ["Auth:Users:0:Role"] = "User",
+                ["Auth:Users:0:Username"] = "test-admin",
+                ["Auth:Users:0:Password"] = "admin123",
+                ["Auth:Users:0:Role"] = "Admin",
                 ["Auth:Users:0:Scopes:0"] = "content.read",
+                ["Auth:Users:0:Scopes:1"] = "content.write",
+                ["Auth:Users:1:Username"] = "test-user",
+                ["Auth:Users:1:Password"] = "user123",
+                ["Auth:Users:1:Role"] = "User",
+                ["Auth:Users:1:Scopes:0"] = "content.read",
                 ["Auth:Clients:0:ClientId"] = "worker-service",
                 ["Auth:Clients:0:ClientSecret"] = "worker-secret",
-                ["Auth:Clients:0:Scopes:0"] = "content.read"
+                ["Auth:Clients:0:Scopes:0"] = "content.read",
+                ["Auth:Clients:0:Scopes:1"] = "content.write"
             });
         });
+    }
+
+    private static string FindProjectDirectory(string projectName)
+    {
+        var directory = new DirectoryInfo(Directory.GetCurrentDirectory());
+
+        while (directory is not null)
+        {
+            var projectDirectory = Path.Combine(directory.FullName, "backend", projectName);
+            if (File.Exists(Path.Combine(projectDirectory, $"{projectName}.csproj")))
+            {
+                return projectDirectory;
+            }
+
+            directory = directory.Parent;
+        }
+
+        throw new DirectoryNotFoundException($"Could not find project directory for {projectName}.");
     }
 }
 

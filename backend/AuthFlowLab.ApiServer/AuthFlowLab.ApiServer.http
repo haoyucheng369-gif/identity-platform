@@ -20,6 +20,11 @@ GET {{ApiServer}}/content/read
 Accept: application/json
 Authorization: Bearer {{AccessToken}}
 
+### Requires content.write scope
+POST {{ApiServer}}/content/write
+Accept: application/json
+Authorization: Bearer {{AccessToken}}
+
 ### Requires token_type=service
 GET {{ApiServer}}/content/service
 Accept: application/json
