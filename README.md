@@ -35,13 +35,13 @@ Users:
 | Username | Password | Role  | Scope        |
 | --- | --- | --- | --- |
 | `user` | `user123` | `User` | `content.read` |
-| `admin` | `admin123` | `Admin` | `content.read` |
+| `admin` | `admin123` | `Admin` | `content.read content.write` |
 
 Client:
 
 | Client ID | Client Secret | Scope |
 | --- | --- | --- |
-| `worker-service` | `worker-secret` | `content.read` |
+| `worker-service` | `worker-secret` | `content.read content.write` |
 
 These are lab credentials. Do not use committed secrets for real systems.
 
@@ -66,7 +66,7 @@ Response:
   "access_token": "<jwt>",
   "token_type": "Bearer",
   "expires_in": 1800,
-  "scope": "content.read"
+  "scope": "content.read content.write"
 }
 ```
 
@@ -102,6 +102,7 @@ The response shape is the same as login. Invalid clients return `invalid_client`
 | `GET /content/user` | Any valid bearer token |
 | `GET /content/admin` | `Admin` role |
 | `GET /content/read` | `content.read` scope |
+| `POST /content/write` | `content.write` scope |
 | `GET /content/service` | `token_type=service` |
 
 Example:
@@ -118,6 +119,8 @@ Use these files with Visual Studio, Rider, or the REST Client extension:
 - `backend/AuthFlowLab.http` contains the full Auth Server + API Server flow.
 - `backend/AuthFlowLab.AuthServer/AuthFlowLab.AuthServer.http` contains Auth Server requests.
 - `backend/AuthFlowLab.ApiServer/AuthFlowLab.ApiServer.http` contains API Server requests.
+
+Keep shared `.http` files token-free. If you want to store personal tokens locally, create a file such as `backend/AuthFlowLab.local.http`; `*.local.http` is ignored by Git.
 
 ## Tests
 

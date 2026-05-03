@@ -51,6 +51,28 @@ public sealed class ContentEndpointTests : IClassFixture<ApiServerFactory>
     }
 
     [Fact]
+    public async Task WriteContent_RejectsUserWithoutContentWriteScope()
+    {
+        UseBearerToken(_factory.CreateToken("user", tokenType: "user", role: "User", scope: "content.read"));
+
+        var response = await _client.PostAsync("/content/write", content: null);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task WriteContent_AllowsAdminWithContentWriteScope()
+    {
+        UseBearerToken(_factory.CreateToken("admin", tokenType: "user", role: "Admin", scope: "content.read content.write"));
+
+        var response = await _client.PostAsync("/content/write", content: null);
+        var content = await response.Content.ReadAsStringAsync();
+
+        Assert.True(response.IsSuccessStatusCode, content);
+        Assert.Equal("Content write allowed", content);
+    }
+
+    [Fact]
     public async Task AdminContent_RequiresAdminRole()
     {
         UseBearerToken(_factory.CreateToken("user", tokenType: "user", role: "User", scope: "content.read"));
@@ -68,6 +90,18 @@ public sealed class ContentEndpointTests : IClassFixture<ApiServerFactory>
         var content = await _client.GetStringAsync("/content/service");
 
         Assert.Equal("Service-only content", content);
+    }
+
+    [Fact]
+    public async Task WriteContent_AllowsServiceWithContentWriteScope()
+    {
+        UseBearerToken(_factory.CreateToken("worker-service", tokenType: "service", scope: "content.read content.write"));
+
+        var response = await _client.PostAsync("/content/write", content: null);
+        var content = await response.Content.ReadAsStringAsync();
+
+        Assert.True(response.IsSuccessStatusCode, content);
+        Assert.Equal("Content write allowed", content);
     }
 
     private void UseBearerToken(string token)
@@ -118,6 +152,7 @@ public sealed class ApiServerFactory : WebApplicationFactory<Program>
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
+        builder.UseContentRoot(FindProjectDirectory("AuthFlowLab.ApiServer"));
         builder.ConfigureAppConfiguration((_, config) =>
         {
             config.AddInMemoryCollection(new Dictionary<string, string?>
@@ -125,5 +160,23 @@ public sealed class ApiServerFactory : WebApplicationFactory<Program>
                 ["Jwt:PublicKeyPath"] = _publicKeyPath
             });
         });
+    }
+
+    private static string FindProjectDirectory(string projectName)
+    {
+        var directory = new DirectoryInfo(Directory.GetCurrentDirectory());
+
+        while (directory is not null)
+        {
+            var projectDirectory = Path.Combine(directory.FullName, "backend", projectName);
+            if (File.Exists(Path.Combine(projectDirectory, $"{projectName}.csproj")))
+            {
+                return projectDirectory;
+            }
+
+            directory = directory.Parent;
+        }
+
+        throw new DirectoryNotFoundException($"Could not find project directory for {projectName}.");
     }
 }

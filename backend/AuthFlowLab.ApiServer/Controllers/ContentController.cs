@@ -27,6 +27,11 @@ public class ContentController : ControllerBase
     public IActionResult ReadContent()
         => Ok("Content read allowed");
 
+    [HttpPost("write")]
+    [Authorize(Policy = "ContentWrite")]
+    public IActionResult WriteContent()
+        => Ok("Content write allowed");
+
     [HttpGet("service")]
     [Authorize(Policy = "ServiceOnly")]
     public IActionResult ServiceContent()

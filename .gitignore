@@ -5,6 +5,7 @@ keys/*.key
 .vscode/
 *.user
 *.suo
+*.local.http
 
 # Ignore build output
 bin/
