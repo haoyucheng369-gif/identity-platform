@@ -1,8 +1,11 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.IdentityModel.Tokens.Jwt;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Security.Cryptography;
 using System.Text.Json.Serialization;
+using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
@@ -15,7 +18,10 @@ public sealed class AuthEndpointTests : IClassFixture<AuthServerFactory>
 
     public AuthEndpointTests(AuthServerFactory factory)
     {
-        _client = factory.CreateClient();
+        _client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
     }
 
     [Fact]
@@ -140,8 +146,12 @@ public sealed class AuthEndpointTests : IClassFixture<AuthServerFactory>
 
         Assert.Equal("http://auth-flow-lab.test", document.GetProperty("issuer").GetString());
         Assert.Equal("http://auth-flow-lab.test/connect/token", document.GetProperty("token_endpoint").GetString());
+        Assert.Equal("http://auth-flow-lab.test/connect/userinfo", document.GetProperty("userinfo_endpoint").GetString());
         Assert.Equal("http://auth-flow-lab.test/.well-known/jwks.json", document.GetProperty("jwks_uri").GetString());
         Assert.Contains("client_credentials", document.GetProperty("grant_types_supported").EnumerateArray().Select(item => item.GetString()));
+        Assert.Contains("authorization_code", document.GetProperty("grant_types_supported").EnumerateArray().Select(item => item.GetString()));
+        Assert.Equal("http://auth-flow-lab.test/connect/authorize", document.GetProperty("authorization_endpoint").GetString());
+        Assert.Contains("openid", document.GetProperty("scopes_supported").EnumerateArray().Select(item => item.GetString()));
     }
 
     [Fact]
@@ -155,6 +165,146 @@ public sealed class AuthEndpointTests : IClassFixture<AuthServerFactory>
         Assert.Equal("RS256", key.GetProperty("alg").GetString());
         Assert.False(string.IsNullOrWhiteSpace(key.GetProperty("n").GetString()));
         Assert.False(string.IsNullOrWhiteSpace(key.GetProperty("e").GetString()));
+    }
+
+    [Fact]
+    public async Task Authorize_WithPkce_RedirectsWithCodeAndState()
+    {
+        var verifier = "test-code-verifier-1234567890";
+        var challenge = CreateS256Challenge(verifier);
+        var authorizeUrl = QueryHelpers.AddQueryString("/connect/authorize", new Dictionary<string, string?>
+        {
+            ["response_type"] = "code",
+            ["client_id"] = "demo-spa",
+            ["redirect_uri"] = "http://127.0.0.1:5173/callback",
+            ["scope"] = "openid profile content.read",
+            ["state"] = "abc-state",
+            ["nonce"] = "abc-nonce",
+            ["code_challenge"] = challenge,
+            ["code_challenge_method"] = "S256",
+            ["username"] = "test-user",
+            ["password"] = "user123"
+        });
+
+        var response = await _client.GetAsync(authorizeUrl);
+
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.NotNull(response.Headers.Location);
+
+        var callbackQuery = QueryHelpers.ParseQuery(response.Headers.Location.Query);
+        Assert.Equal("abc-state", callbackQuery["state"]);
+        Assert.False(string.IsNullOrWhiteSpace(callbackQuery["code"]));
+    }
+
+    [Fact]
+    public async Task Token_WithAuthorizationCodeAndPkce_ReturnsUserToken()
+    {
+        var verifier = "test-code-verifier-1234567890";
+        var code = await CreateAuthorizationCode(verifier, "openid profile content.read", "oidc-nonce");
+
+        var response = await _client.PostAsync("/connect/token", new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["grant_type"] = "authorization_code",
+            ["client_id"] = "demo-spa",
+            ["code"] = code,
+            ["redirect_uri"] = "http://127.0.0.1:5173/callback",
+            ["code_verifier"] = verifier
+        }));
+
+        response.EnsureSuccessStatusCode();
+        var token = await response.Content.ReadFromJsonAsync<TokenResponse>();
+
+        Assert.NotNull(token);
+        Assert.Equal("Bearer", token.TokenType);
+        Assert.Equal("openid profile content.read", token.Scope);
+        Assert.False(string.IsNullOrWhiteSpace(token.AccessToken));
+        Assert.False(string.IsNullOrWhiteSpace(token.IdToken));
+
+        var idToken = new JwtSecurityTokenHandler().ReadJwtToken(token.IdToken);
+        Assert.Equal("http://auth-flow-lab.test", idToken.Issuer);
+        Assert.Contains(idToken.Audiences, audience => audience == "demo-spa");
+        Assert.Equal("test-user", idToken.Claims.Single(claim => claim.Type == JwtRegisteredClaimNames.Sub).Value);
+        Assert.Equal("oidc-nonce", idToken.Claims.Single(claim => claim.Type == "nonce").Value);
+    }
+
+    [Fact]
+    public async Task UserInfo_WithAccessToken_ReturnsUserClaims()
+    {
+        var verifier = "test-code-verifier-1234567890";
+        var code = await CreateAuthorizationCode(verifier, "openid profile content.read", "userinfo-nonce");
+        var tokenResponse = await _client.PostAsync("/connect/token", new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["grant_type"] = "authorization_code",
+            ["client_id"] = "demo-spa",
+            ["code"] = code,
+            ["redirect_uri"] = "http://127.0.0.1:5173/callback",
+            ["code_verifier"] = verifier
+        }));
+        tokenResponse.EnsureSuccessStatusCode();
+        var token = await tokenResponse.Content.ReadFromJsonAsync<TokenResponse>();
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/connect/userinfo");
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token!.AccessToken);
+
+        var response = await _client.SendAsync(request);
+        response.EnsureSuccessStatusCode();
+        var userInfo = await response.Content.ReadFromJsonAsync<JsonElement>();
+
+        Assert.Equal("test-user", userInfo.GetProperty("sub").GetString());
+        Assert.Equal("test-user", userInfo.GetProperty("name").GetString());
+        Assert.Equal("User", userInfo.GetProperty("role").GetString());
+    }
+
+    [Fact]
+    public async Task Token_WithWrongPkceVerifier_ReturnsInvalidGrant()
+    {
+        var code = await CreateAuthorizationCode("test-code-verifier-1234567890");
+
+        var response = await _client.PostAsync("/connect/token", new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["grant_type"] = "authorization_code",
+            ["client_id"] = "demo-spa",
+            ["code"] = code,
+            ["redirect_uri"] = "http://127.0.0.1:5173/callback",
+            ["code_verifier"] = "wrong-code-verifier"
+        }));
+
+        var error = await response.Content.ReadFromJsonAsync<AuthErrorResponse>();
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal("invalid_grant", error?.Error);
+    }
+
+    private async Task<string> CreateAuthorizationCode(
+        string verifier,
+        string scope = "content.read",
+        string? nonce = null)
+    {
+        var authorizeUrl = QueryHelpers.AddQueryString("/connect/authorize", new Dictionary<string, string?>
+        {
+            ["response_type"] = "code",
+            ["client_id"] = "demo-spa",
+            ["redirect_uri"] = "http://127.0.0.1:5173/callback",
+            ["scope"] = scope,
+            ["state"] = "token-test",
+            ["nonce"] = nonce,
+            ["code_challenge"] = CreateS256Challenge(verifier),
+            ["code_challenge_method"] = "S256",
+            ["username"] = "test-user",
+            ["password"] = "user123"
+        });
+
+        var response = await _client.GetAsync(authorizeUrl);
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+
+        var callbackQuery = QueryHelpers.ParseQuery(response.Headers.Location!.Query);
+        return callbackQuery["code"].ToString();
+    }
+
+    private static string CreateS256Challenge(string verifier)
+    {
+        var hash = SHA256.HashData(System.Text.Encoding.ASCII.GetBytes(verifier));
+        return Microsoft.IdentityModel.Tokens.Base64UrlEncoder.Encode(hash);
     }
 }
 
@@ -193,24 +343,42 @@ public sealed class AuthServerFactory : WebApplicationFactory<Program>
                 ["Auth:Clients:0:ClientSecret"] = "worker-secret",
                 ["Auth:Clients:0:AllowedGrantTypes:0"] = "client_credentials",
                 ["Auth:Clients:0:Scopes:0"] = "content.read",
-                ["Auth:Clients:0:Scopes:1"] = "content.write"
+                ["Auth:Clients:0:Scopes:1"] = "content.write",
+                ["Auth:Clients:1:ClientId"] = "demo-spa",
+                ["Auth:Clients:1:ClientSecret"] = "",
+                ["Auth:Clients:1:AllowedGrantTypes:0"] = "authorization_code",
+                ["Auth:Clients:1:Scopes:0"] = "openid",
+                ["Auth:Clients:1:Scopes:1"] = "profile",
+                ["Auth:Clients:1:Scopes:2"] = "content.read",
+                ["Auth:Clients:1:RedirectUris:0"] = "http://127.0.0.1:5173/callback"
             });
         });
     }
 
-    private static string FindProjectDirectory(string projectName)
+    private static string FindProjectDirectory(
+        string projectName,
+        [CallerFilePath] string sourceFilePath = "")
     {
-        var directory = new DirectoryInfo(Directory.GetCurrentDirectory());
-
-        while (directory is not null)
+        var startDirectories = new[]
         {
-            var projectDirectory = Path.Combine(directory.FullName, "backend", projectName);
-            if (File.Exists(Path.Combine(projectDirectory, $"{projectName}.csproj")))
-            {
-                return projectDirectory;
-            }
+            Directory.GetCurrentDirectory(),
+            AppContext.BaseDirectory,
+            Path.GetDirectoryName(sourceFilePath) ?? Directory.GetCurrentDirectory()
+        };
 
-            directory = directory.Parent;
+        foreach (var startDirectory in startDirectories)
+        {
+            var directory = new DirectoryInfo(startDirectory);
+            while (directory is not null)
+            {
+                var projectDirectory = Path.Combine(directory.FullName, "backend", projectName);
+                if (File.Exists(Path.Combine(projectDirectory, $"{projectName}.csproj")))
+                {
+                    return projectDirectory;
+                }
+
+                directory = directory.Parent;
+            }
         }
 
         throw new DirectoryNotFoundException($"Could not find project directory for {projectName}.");
@@ -221,7 +389,8 @@ public sealed record TokenResponse(
     [property: JsonPropertyName("access_token")] string AccessToken,
     [property: JsonPropertyName("token_type")] string TokenType,
     [property: JsonPropertyName("expires_in")] int ExpiresIn,
-    [property: JsonPropertyName("scope")] string Scope);
+    [property: JsonPropertyName("scope")] string Scope,
+    [property: JsonPropertyName("id_token")] string? IdToken = null);
 
 public sealed record AuthErrorResponse(
     [property: JsonPropertyName("error")] string Error,

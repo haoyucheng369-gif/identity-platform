@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using AuthFlowLab.ApiServer.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.OpenApi;
 using Microsoft.IdentityModel.Tokens;
@@ -27,10 +28,26 @@ builder.Services.AddSwaggerGen(options =>
         Description = "Paste a JWT access token. The 'Bearer' prefix is optional."
     });
 
+    options.AddSecurityDefinition("ApiKey", new OpenApiSecurityScheme
+    {
+        Name = ApiKeyAuthenticationDefaults.HeaderName,
+        Type = SecuritySchemeType.ApiKey,
+        In = ParameterLocation.Header,
+        Description = "Paste an API key for endpoints that use X-Api-Key authentication."
+    });
+
     options.AddSecurityRequirement(document => new OpenApiSecurityRequirement
     {
         {
             new OpenApiSecuritySchemeReference("Bearer", document),
+            []
+        }
+    });
+
+    options.AddSecurityRequirement(document => new OpenApiSecurityRequirement
+    {
+        {
+            new OpenApiSecuritySchemeReference("ApiKey", document),
             []
         }
     });
@@ -54,7 +71,14 @@ builder.Services
             ValidateIssuerSigningKey = true,
             RoleClaimType = ClaimTypes.Role
         };
-    });
+    })
+    .AddScheme<ApiKeyAuthenticationOptions, ApiKeyAuthenticationHandler>(
+        ApiKeyAuthenticationDefaults.AuthenticationScheme,
+        options =>
+        {
+            // Demo API keys. Production keys should live in Secret Manager, env vars, or a key vault.
+            builder.Configuration.GetSection("ApiKeys").Bind(options);
+        });
 
 // Authorization：token 已可信后，根据 claims 判断能不能访问具体资源。
 builder.Services.AddAuthorization(options =>
@@ -80,6 +104,14 @@ builder.Services.AddAuthorization(options =>
     {
         return context.User.HasClaim(c => c.Type == "token_type" && c.Value == "service");
     }));
+
+    // ApiKeyOnly uses its own scheme and authenticates requests from the X-Api-Key header.
+    options.AddPolicy("ApiKeyOnly", policy =>
+    {
+        policy.AuthenticationSchemes.Add(ApiKeyAuthenticationDefaults.AuthenticationScheme);
+        policy.RequireAuthenticatedUser();
+        policy.RequireClaim("token_type", "api_key");
+    });
 });
 
 var app = builder.Build();

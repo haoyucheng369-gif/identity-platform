@@ -6,9 +6,10 @@ A minimal authentication and authorization lab for learning JWT bearer validatio
 
 - User login issues JWT access tokens.
 - Client credentials uses the OAuth2-style `/connect/token` endpoint.
+- Authorization code + PKCE issues user access tokens through `/connect/authorize` and `/connect/token`.
 - Auth Server exposes OpenID Connect discovery metadata and JWKS.
 - API Server validates JWTs signed by Auth Server.
-- API endpoints demonstrate anonymous, authenticated, role, scope, and service-only authorization.
+- API endpoints demonstrate anonymous, authenticated, role, scope, service-only, and API-key authorization.
 
 ## Architecture
 
@@ -44,8 +45,17 @@ Client:
 | Client ID | Client Secret | Scope |
 | --- | --- | --- |
 | `worker-service` | `worker-secret` | `content.read content.write` |
+| `demo-spa` | none | `openid profile content.read` |
 
 These are lab credentials. Do not use committed secrets for real systems.
+
+API key:
+
+| Name | Header | Value |
+| --- | --- | --- |
+| `internal-tool` | `X-Api-Key` | `dev-api-key-123` |
+
+The API key is a lab credential configured on the API Server. It is not an OAuth2/OIDC grant type.
 
 ## Auth Server API
 
@@ -97,6 +107,53 @@ The response shape is the same as login. Invalid clients return `invalid_client`
 
 The old lab-only `/auth/client-token` endpoint has been removed. Service tokens now use the OAuth2-style `/connect/token` endpoint.
 
+### Authorization Code + PKCE And OIDC
+
+The current lab version simulates the login page by accepting `username` and `password` on the authorize request. A real frontend will replace that with a browser login screen.
+
+When the request includes `openid`, Auth Server also returns an OIDC `id_token`. The `access_token` is for API access; the `id_token` is for the client application to know who logged in.
+
+Start the authorization request:
+
+```http
+GET http://127.0.0.1:5001/connect/authorize?response_type=code&client_id=demo-spa&redirect_uri=http%3A%2F%2F127.0.0.1%3A5173%2Fcallback&scope=openid%20profile%20content.read&state=demo-state&nonce=demo-nonce&code_challenge=mvtzfCbIJ5YDPp1UVYfCnz2ZSvRrCEUgWtyrhVS6xo8&code_challenge_method=S256&username=user&password=user123
+```
+
+For this example:
+
+```text
+code_verifier = demo-code-verifier-1234567890
+code_challenge = mvtzfCbIJ5YDPp1UVYfCnz2ZSvRrCEUgWtyrhVS6xo8
+nonce = demo-nonce
+```
+
+The response redirects to the registered callback URL with `code` and `state`:
+
+```text
+http://127.0.0.1:5173/callback?code=<authorization-code>&state=demo-state
+```
+
+Exchange the code for a user access token:
+Because the original scope included `openid`, the response also includes `id_token`.
+
+```http
+POST http://127.0.0.1:5001/connect/token
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=authorization_code
+&client_id=demo-spa
+&code=<authorization-code>
+&redirect_uri=http://127.0.0.1:5173/callback
+&code_verifier=demo-code-verifier-1234567890
+```
+
+Call UserInfo with the returned access token:
+
+```http
+GET http://127.0.0.1:5001/connect/userinfo
+Authorization: Bearer <access-token>
+```
+
 ### Discovery And JWKS
 
 ```http
@@ -121,12 +178,20 @@ The JWKS document exposes the RSA public key used by API servers to verify JWT s
 | `GET /content/read` | `content.read` scope |
 | `POST /content/write` | `content.write` scope |
 | `GET /content/service` | `token_type=service` |
+| `GET /content/api-key` | Valid `X-Api-Key` header |
 
 Example:
 
 ```http
 GET http://127.0.0.1:5002/content/read
 Authorization: Bearer <access_token>
+```
+
+API key example:
+
+```http
+GET http://127.0.0.1:5002/content/api-key
+X-Api-Key: dev-api-key-123
 ```
 
 ## HTTP Examples

@@ -24,13 +24,16 @@ public sealed class DiscoveryController : ControllerBase
         return Ok(new
         {
             issuer,
+            authorization_endpoint = $"{issuer}/connect/authorize",
             token_endpoint = $"{issuer}/connect/token",
+            userinfo_endpoint = $"{issuer}/connect/userinfo",
             jwks_uri = $"{issuer}/.well-known/jwks.json",
-            response_types_supported = Array.Empty<string>(),
-            grant_types_supported = new[] { "client_credentials" },
-            token_endpoint_auth_methods_supported = new[] { "client_secret_post" },
-            scopes_supported = new[] { "content.read", "content.write" },
-            claims_supported = new[] { "sub", "client_id", "scope", "token_type", "role", "name" },
+            response_types_supported = new[] { "code" },
+            grant_types_supported = new[] { "client_credentials", "authorization_code" },
+            token_endpoint_auth_methods_supported = new[] { "client_secret_post", "none" },
+            code_challenge_methods_supported = new[] { "S256" },
+            scopes_supported = new[] { "openid", "profile", "content.read", "content.write" },
+            claims_supported = new[] { "sub", "client_id", "scope", "token_type", "role", "name", "nonce" },
             id_token_signing_alg_values_supported = new[] { "RS256" }
         });
     }

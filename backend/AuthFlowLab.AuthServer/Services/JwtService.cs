@@ -23,27 +23,32 @@ public class JwtService
         _rsaKeyService = rsaKeyService;
     }
 
-    public TokenResponse GenerateUserToken(string username, string role, IEnumerable<string> scopes)
+    public TokenResponse GenerateUserToken(
+        string username,
+        string role,
+        IEnumerable<string> scopes,
+        string? clientId = null,
+        string? nonce = null)
     {
-        // OAuth2 常见做法是把多个 scope 放在同一个 claim 中，用空格分隔。
-        var scope = string.Join(' ', scopes);
+        var scopeList = scopes.ToList();
+        var scope = string.Join(' ', scopeList);
         var claims = new List<Claim>
         {
-            // sub 表示 token 的主体；用户 token 中就是用户名。
             new(JwtRegisteredClaimNames.Sub, username),
-            // jti 是 token 唯一 ID，后续做撤销、审计或重放防护时会用到。
             new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString("N")),
-            // iat 表示签发时间，使用 Unix epoch 秒。
             new(JwtRegisteredClaimNames.Iat, EpochTime.GetIntDate(DateTime.UtcNow).ToString(), ClaimValueTypes.Integer64),
             new(ClaimTypes.Name, username),
-            // role 是 ASP.NET Core [Authorize(Roles = "...")] 能直接识别的角色 claim。
             new(ClaimTypes.Role, role),
             new("scope", scope),
-            // token_type 是本实验自定义 claim，用来区分 user token 和 service token。
             new("token_type", "user")
         };
 
-        return GenerateToken(claims, scope);
+        var accessToken = GenerateJwt(claims, GetApiAudience());
+        var idToken = scopeList.Contains("openid", StringComparer.Ordinal)
+            ? GenerateIdToken(username, role, clientId, nonce)
+            : null;
+
+        return CreateTokenResponse(accessToken, scope, idToken);
     }
 
     public TokenResponse GenerateServiceToken(string clientId, IEnumerable<string> scopes)
@@ -51,7 +56,6 @@ public class JwtService
         var scope = string.Join(' ', scopes);
         var claims = new List<Claim>
         {
-            // service token 的主体是 client_id，而不是用户。
             new(JwtRegisteredClaimNames.Sub, clientId),
             new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString("N")),
             new(JwtRegisteredClaimNames.Iat, EpochTime.GetIntDate(DateTime.UtcNow).ToString(), ClaimValueTypes.Integer64),
@@ -60,33 +64,66 @@ public class JwtService
             new("token_type", "service")
         };
 
-        return GenerateToken(claims, scope);
+        return CreateTokenResponse(GenerateJwt(claims, GetApiAudience()), scope);
     }
 
-    private TokenResponse GenerateToken(List<Claim> claims, string scope)
+    private string GenerateIdToken(string username, string role, string? clientId, string? nonce)
     {
-        // issuer/audience 是 ApiServer 验证 token 时必须匹配的信任边界。
-        var issuer = _configuration["Jwt:Issuer"] ?? "http://127.0.0.1:5001";
-        var audience = _configuration["Jwt:Audience"] ?? "api-server";
-        var expiresIn = _authOptions.AccessTokenMinutes * 60;
+        if (string.IsNullOrWhiteSpace(clientId))
+        {
+            throw new InvalidOperationException("OIDC id_token requires a client id audience.");
+        }
 
-        // RS256 = RSA 私钥签名 + SHA-256；签名凭证由 RsaKeyService 统一创建。
-        var credentials = _rsaKeyService.CreateSigningCredentials();
+        /*
+         * id_token is for the client application, not for the API.
+         * Its aud is the OAuth/OIDC client_id, while access_token aud is the API audience.
+         */
+        var claims = new List<Claim>
+        {
+            new(JwtRegisteredClaimNames.Sub, username),
+            new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString("N")),
+            new(JwtRegisteredClaimNames.Iat, EpochTime.GetIntDate(DateTime.UtcNow).ToString(), ClaimValueTypes.Integer64),
+            new(JwtRegisteredClaimNames.Name, username),
+            new(ClaimTypes.Role, role)
+        };
 
-        // payload 中放 claims，signature 由私钥生成；ApiServer 后续通过 JWKS 公钥验证 signature。
+        if (!string.IsNullOrWhiteSpace(nonce))
+        {
+            claims.Add(new Claim(JwtRegisteredClaimNames.Nonce, nonce));
+        }
+
+        return GenerateJwt(claims, clientId);
+    }
+
+    private string GenerateJwt(List<Claim> claims, string audience)
+    {
         var token = new JwtSecurityToken(
-            issuer: issuer,
+            issuer: GetIssuer(),
             audience: audience,
             claims: claims,
-            expires: DateTime.UtcNow.AddSeconds(expiresIn),
-            signingCredentials: credentials
-        );
+            expires: DateTime.UtcNow.AddMinutes(_authOptions.AccessTokenMinutes),
+            signingCredentials: _rsaKeyService.CreateSigningCredentials());
 
-        // 返回 OAuth2 风格 token response，access_token 才是调用 API 时放到 Authorization header 的值。
+        return new JwtSecurityTokenHandler().WriteToken(token);
+    }
+
+    private TokenResponse CreateTokenResponse(string accessToken, string scope, string? idToken = null)
+    {
         return new TokenResponse(
-            new JwtSecurityTokenHandler().WriteToken(token),
+            accessToken,
             "Bearer",
-            expiresIn,
-            scope);
+            _authOptions.AccessTokenMinutes * 60,
+            scope,
+            idToken);
+    }
+
+    private string GetIssuer()
+    {
+        return _configuration["Jwt:Issuer"] ?? "http://127.0.0.1:5001";
+    }
+
+    private string GetApiAudience()
+    {
+        return _configuration["Jwt:Audience"] ?? "api-server";
     }
 }

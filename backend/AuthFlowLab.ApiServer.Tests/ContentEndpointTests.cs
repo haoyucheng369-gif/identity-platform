@@ -1,6 +1,7 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Net;
 using System.Net.Http.Headers;
+using System.Runtime.CompilerServices;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using Microsoft.AspNetCore.Hosting;
@@ -108,6 +109,34 @@ public sealed class ContentEndpointTests : IClassFixture<ApiServerFactory>
         Assert.Equal("Content write allowed", content);
     }
 
+    [Fact]
+    public async Task ApiKeyContent_RequiresApiKey()
+    {
+        var response = await _client.GetAsync("/content/api-key");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task ApiKeyContent_RejectsInvalidApiKey()
+    {
+        _client.DefaultRequestHeaders.Add("X-Api-Key", "wrong-key");
+
+        var response = await _client.GetAsync("/content/api-key");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task ApiKeyContent_AllowsValidApiKey()
+    {
+        _client.DefaultRequestHeaders.Add("X-Api-Key", "test-api-key");
+
+        var content = await _client.GetStringAsync("/content/api-key");
+
+        Assert.Equal("API key content", content);
+    }
+
     private void UseBearerToken(string token)
     {
         _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
@@ -162,7 +191,9 @@ public sealed class ApiServerFactory : WebApplicationFactory<Program>
             {
                 ["Jwt:Authority"] = "http://auth-flow-lab.test",
                 ["Jwt:Audience"] = "api-server",
-                ["Jwt:RequireHttpsMetadata"] = "false"
+                ["Jwt:RequireHttpsMetadata"] = "false",
+                ["ApiKeys:Keys:0:Name"] = "test-tool",
+                ["ApiKeys:Keys:0:Value"] = "test-api-key"
             });
         });
 
@@ -187,19 +218,30 @@ public sealed class ApiServerFactory : WebApplicationFactory<Program>
         });
     }
 
-    private static string FindProjectDirectory(string projectName)
+    private static string FindProjectDirectory(
+        string projectName,
+        [CallerFilePath] string sourceFilePath = "")
     {
-        var directory = new DirectoryInfo(Directory.GetCurrentDirectory());
-
-        while (directory is not null)
+        var startDirectories = new[]
         {
-            var projectDirectory = Path.Combine(directory.FullName, "backend", projectName);
-            if (File.Exists(Path.Combine(projectDirectory, $"{projectName}.csproj")))
-            {
-                return projectDirectory;
-            }
+            Directory.GetCurrentDirectory(),
+            AppContext.BaseDirectory,
+            Path.GetDirectoryName(sourceFilePath) ?? Directory.GetCurrentDirectory()
+        };
 
-            directory = directory.Parent;
+        foreach (var startDirectory in startDirectories)
+        {
+            var directory = new DirectoryInfo(startDirectory);
+            while (directory is not null)
+            {
+                var projectDirectory = Path.Combine(directory.FullName, "backend", projectName);
+                if (File.Exists(Path.Combine(projectDirectory, $"{projectName}.csproj")))
+                {
+                    return projectDirectory;
+                }
+
+                directory = directory.Parent;
+            }
         }
 
         throw new DirectoryNotFoundException($"Could not find project directory for {projectName}.");

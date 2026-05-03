@@ -39,10 +39,28 @@ POST {{AuthServer}}/connect/token
 Content-Type: application/x-www-form-urlencoded
 Accept: application/json
 
-grant_type=client_credentials
-&client_id=worker-service
-&client_secret=worker-secret
-&scope=content.read content.write
+grant_type=client_credentials&client_id=worker-service&client_secret=worker-secret&scope=content.read%20content.write
+
+### Start authorization_code + PKCE
+# Browser receives 302. Copy code from the Location callback URL.
+# code_verifier = demo-code-verifier-1234567890
+# code_challenge = SHA256(code_verifier) base64url
+GET {{AuthServer}}/connect/authorize?response_type=code&client_id=demo-spa&redirect_uri=http%3A%2F%2F127.0.0.1%3A5173%2Fcallback&scope=openid%20profile%20content.read&state=demo-state&nonce=demo-nonce&code_challenge=mvtzfCbIJ5YDPp1UVYfCnz2ZSvRrCEUgWtyrhVS6xo8&code_challenge_method=S256&username=user&password=user123
+Accept: application/json
+
+### Exchange authorization code for token
+# Paste the code from the previous Location header below.
+POST {{AuthServer}}/connect/token
+Content-Type: application/x-www-form-urlencoded
+Accept: application/json
+
+grant_type=authorization_code&client_id=demo-spa&code=PASTE_CODE_HERE&redirect_uri=http%3A%2F%2F127.0.0.1%3A5173%2Fcallback&code_verifier=demo-code-verifier-1234567890
+
+### UserInfo with access token
+# Paste the access_token returned by authorization_code token exchange.
+GET {{AuthServer}}/connect/userinfo
+Accept: application/json
+Authorization: Bearer PASTE_ACCESS_TOKEN_HERE
 
 ### Invalid login returns an OAuth-style error
 # 认证失败示例：用户名密码错误返回 invalid_grant。

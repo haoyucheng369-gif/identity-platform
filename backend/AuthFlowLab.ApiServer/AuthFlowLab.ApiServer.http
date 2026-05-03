@@ -1,5 +1,5 @@
 @ApiServer = http://127.0.0.1:5002
-@AccessToken = paste-token-here
+@AccessToken = eyJhbGciOiJSUzI1NiIsImtpZCI6ImF1dGgtZmxvdy1sYWIta2V5LTEiLCJ0eXAiOiJKV1QifQ.eyJzdWIiOiJ1c2VyIiwianRpIjoiMzhiZDNmM2QxYWZmNDg0NWFmZGIxMzc1NDA5YjAyY2YiLCJpYXQiOjE3Nzc4MTcxODgsImh0dHA6Ly9zY2hlbWFzLnhtbHNvYXAub3JnL3dzLzIwMDUvMDUvaWRlbnRpdHkvY2xhaW1zL25hbWUiOiJ1c2VyIiwiaHR0cDovL3NjaGVtYXMubWljcm9zb2Z0LmNvbS93cy8yMDA4LzA2L2lkZW50aXR5L2NsYWltcy9yb2xlIjoiVXNlciIsInNjb3BlIjoiY29udGVudC5yZWFkIiwidG9rZW5fdHlwZSI6InVzZXIiLCJleHAiOjE3Nzc4MTg5ODgsImlzcyI6Imh0dHA6Ly8xMjcuMC4wLjE6NTAwMSIsImF1ZCI6ImFwaS1zZXJ2ZXIifQ.BN-GmygzIiiprxFeWBtCSYkSdo7zRlN_LPXAzr_vWv_PUP-WFRZVGUBSik8O3-C14QyS0nmQZRe3mDPF7rkM47dISeNSYc2Fa4oZ_xWcvm1PIRi67yjjexkVsye49DhUYhT5wxa7xzoPjODMqda2AIkmOFN0YcY6cNzKJL0oXUq1rSgEtUcpF-XMT4fXtW7lOS2gJyureDcfJNQXmJrJzhSE-zi8C6LtsTM1iDdi_LgbXkWnZzjmZzzRCcBBdRUdFil6dWJXlBLeQKYlHPUI7josc8dDwqZVZvceNwPlhuGTR5XDlGzVE2KwCRdD-1e2C9Z8K7061cZqyFjqXmhZoQ
 
 ### Public content does not require a token
 # 匿名接口：不走 Bearer token 验证。
@@ -35,5 +35,11 @@ Authorization: Bearer {{AccessToken}}
 GET {{ApiServer}}/content/service
 Accept: application/json
 Authorization: Bearer {{AccessToken}}
+
+### Requires X-Api-Key
+# API Key is checked directly by ApiServer. It does not call AuthServer.
+GET {{ApiServer}}/content/api-key
+Accept: application/json
+X-Api-Key: dev-api-key-123
 
 ###

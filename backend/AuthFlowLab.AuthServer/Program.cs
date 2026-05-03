@@ -17,6 +17,9 @@ builder.Services.AddSingleton<RsaKeyService>();
 // JwtService 负责把用户/client 信息转换成 claims，并生成 OAuth2 风格 token response。
 builder.Services.AddSingleton<JwtService>();
 
+// 授权码 + PKCE 需要短期保存 code，token endpoint 使用后立即消费。
+builder.Services.AddSingleton<AuthorizationCodeStore>();
+
 var app = builder.Build();
 
 // AuthServer 的 Swagger 主要用于调试登录、token endpoint、discovery 和 JWKS。

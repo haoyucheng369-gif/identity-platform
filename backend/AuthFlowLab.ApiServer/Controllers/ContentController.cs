@@ -42,4 +42,10 @@ public class ContentController : ControllerBase
     [Authorize(Policy = "ServiceOnly")]
     public IActionResult ServiceContent()
         => Ok("Service-only content");
+
+    // API Key 鉴权：不使用 JWT，也不走 AuthServer，ApiServer 直接校验 X-Api-Key。
+    [HttpGet("api-key")]
+    [Authorize(Policy = "ApiKeyOnly")]
+    public IActionResult ApiKeyContent()
+        => Ok("API key content");
 }
