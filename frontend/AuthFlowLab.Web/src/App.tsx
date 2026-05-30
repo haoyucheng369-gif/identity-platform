@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { apiServer, authServer } from './config';
 import {
-  clearSession,
   decodeJwtPayload,
   getApiToken,
   getGraphAccessToken,
   initializeAuthState,
+  logoutSession,
   readTokens,
   startEntraLogin,
   startLogin
@@ -125,18 +125,19 @@ export function App() {
     await callApi(`${authServer}/connect/userinfo`, 'AuthServer /connect/userinfo');
   }
 
-  function logout() {
-    clearSession();
+  async function logout() {
+    // 中文注释：Logout 同时清除前端 token 和 Auth Server cookie，下一次 Local Login 才会重新显示登录页。
+    await logoutSession();
     setTokens(null);
     setResult(null);
-    setMessage('Logged out locally.');
+    setMessage('Logged out.');
   }
 
   return (
     <main className="app-shell">
       <LoginPanel
         message={message}
-        onClear={logout}
+        onLogout={() => void logout()}
         onEntraLogin={() => void handleEntraLogin()}
         onLogin={() => void handleLogin()}
       />

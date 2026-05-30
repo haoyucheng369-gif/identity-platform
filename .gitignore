@@ -6,6 +6,7 @@ keys/*.key
 *.user
 *.suo
 *.local.http
+docker-compose.local.yml
 
 # Ignore build output
 bin/

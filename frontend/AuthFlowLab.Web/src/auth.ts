@@ -191,6 +191,16 @@ export function clearSession() {
   void msalReady.then(() => msalInstance.clearCache());
 }
 
+export async function logoutSession() {
+  // 中文注释：完整退出要让 Auth Server 删除 HttpOnly cookie；只清 token 不会清掉 IdP 登录会话。
+  await fetch(`${authServer}/account/logout`, {
+    method: 'POST',
+    credentials: 'include'
+  });
+
+  clearSession();
+}
+
 export function readTokens() {
   return readJson<TokenResponse>(storageKeys.tokens);
 }
