@@ -2,14 +2,14 @@ type LoginPanelProps = {
   message: string;
   onLogin: () => void;
   onEntraLogin: () => void;
-  onClear: () => void;
+  onLogout: () => void;
 };
 
 export function LoginPanel({
   message,
   onLogin,
   onEntraLogin,
-  onClear
+  onLogout
 }: LoginPanelProps) {
   return (
     <section className="card login-card">
@@ -29,8 +29,8 @@ export function LoginPanel({
         <button type="button" className="btn btn-primary" onClick={onEntraLogin}>
           Entra Login
         </button>
-        <button type="button" className="btn btn-outline" onClick={onClear}>
-          Clear
+        <button type="button" className="btn btn-outline" onClick={onLogout}>
+          Logout
         </button>
       </div>
 

@@ -12,12 +12,19 @@ namespace AuthFlowLab.AuthServer.Controllers;
 [Route("account")]
 public sealed class AccountController : Controller
 {
+    private const string EntraExternalScheme = "Entra";
+
     private readonly AuthOptions _authOptions;
+    private readonly EntraExternalLoginOptions _entraExternalLoginOptions;
     private readonly HtmlEncoder _htmlEncoder;
 
-    public AccountController(IOptions<AuthOptions> authOptions, HtmlEncoder htmlEncoder)
+    public AccountController(
+        IOptions<AuthOptions> authOptions,
+        IOptions<EntraExternalLoginOptions> entraExternalLoginOptions,
+        HtmlEncoder htmlEncoder)
     {
         _authOptions = authOptions.Value;
+        _entraExternalLoginOptions = entraExternalLoginOptions.Value;
         _htmlEncoder = htmlEncoder;
     }
 
@@ -65,6 +72,27 @@ public sealed class AccountController : Controller
         return LocalRedirect(SanitizeReturnUrl(returnUrl));
     }
 
+    [HttpPost("external-login")]
+    [Consumes("application/x-www-form-urlencoded")]
+    public IActionResult ExternalLogin(
+        [FromForm] string provider,
+        [FromForm] string? returnUrl = null)
+    {
+        // 中文注释：外部登录入口只接受当前支持的 Entra provider，并且必须先确认配置完整。
+        if (!IsEntraLoginEnabled() || provider != EntraExternalScheme)
+        {
+            return NotFound();
+        }
+
+        // 中文注释：外部登录只负责认证企业用户；回调成功后仍然写入 Auth Server 自己的登录 cookie。
+        return Challenge(
+            new AuthenticationProperties
+            {
+                RedirectUri = SanitizeReturnUrl(returnUrl)
+            },
+            EntraExternalScheme);
+    }
+
     [HttpPost("logout")]
     public async Task<IActionResult> Logout()
     {
@@ -77,6 +105,17 @@ public sealed class AccountController : Controller
         var encodedReturnUrl = _htmlEncoder.Encode(SanitizeReturnUrl(returnUrl));
         var encodedError = error is null ? string.Empty : _htmlEncoder.Encode(error);
         var errorMarkup = error is null ? string.Empty : $"<div class=\"alert\">{encodedError}</div>";
+        // 中文注释：只有 Entra SSO 可用时才渲染 Microsoft 登录按钮，本地开发默认只显示本地账号登录。
+        var externalLoginMarkup = IsEntraLoginEnabled()
+            ? $$"""
+    <div class="divider"><span>or</span></div>
+    <form method="post" action="/account/external-login">
+      <input type="hidden" name="provider" value="Entra">
+      <input type="hidden" name="returnUrl" value="{{encodedReturnUrl}}">
+      <button type="submit" class="btn-external">Sign in with Microsoft</button>
+    </form>
+"""
+            : string.Empty;
 
         return $$"""
 <!doctype html>
@@ -101,6 +140,10 @@ public sealed class AccountController : Controller
     input:focus { border-color: #86b7fe; outline: 0; box-shadow: 0 0 0 .25rem rgba(13,110,253,.25); }
     button { width: 100%; border: 1px solid #0d6efd; border-radius: .375rem; padding: .5rem .75rem; color: #fff; background: #0d6efd; font: inherit; font-weight: 600; cursor: pointer; }
     button:hover { background: #0b5ed7; }
+    .btn-external { border-color: #495057; background: #fff; color: #212529; }
+    .btn-external:hover { background: #e9ecef; }
+    .divider { display: flex; align-items: center; gap: .75rem; margin: 1rem 0; color: #6c757d; font-size: .8125rem; }
+    .divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: #dee2e6; }
     .eyebrow { margin: 0 0 .25rem; color: #6c757d; font-size: .75rem; font-weight: 700; text-transform: uppercase; }
     .alert { margin-bottom: .875rem; border: 1px solid #f5c2c7; border-radius: .375rem; padding: .625rem .75rem; color: #842029; background: #f8d7da; font-size: .875rem; }
   </style>
@@ -122,6 +165,7 @@ public sealed class AccountController : Controller
       </label>
       <button type="submit">Continue</button>
     </form>
+{{externalLoginMarkup}}
   </main>
 </body>
 </html>
@@ -132,5 +176,14 @@ public sealed class AccountController : Controller
     {
         // 中文注释: 只允许回跳到本站路径，避免登录后被恶意 returnUrl 带到外部网站。
         return Url.IsLocalUrl(returnUrl) ? returnUrl! : "/";
+    }
+
+    private bool IsEntraLoginEnabled()
+    {
+        // 中文注释：只有 Entra 外部登录配置完整时才显示 SSO 入口，避免本地开发缺少 Azure 配置时误触发跳转。
+        return _entraExternalLoginOptions.Enabled &&
+            !string.IsNullOrWhiteSpace(_entraExternalLoginOptions.Authority) &&
+            !string.IsNullOrWhiteSpace(_entraExternalLoginOptions.ClientId) &&
+            !string.IsNullOrWhiteSpace(_entraExternalLoginOptions.ClientSecret);
     }
 }

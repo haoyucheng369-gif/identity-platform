@@ -52,6 +52,28 @@ public sealed class AuthEndpointTests : IClassFixture<AuthServerFactory>
     }
 
     [Fact]
+    public async Task LoginPage_WhenEntraExternalLoginDisabled_HidesMicrosoftButton()
+    {
+        var response = await _client.GetAsync("/account/login");
+        var html = await response.Content.ReadAsStringAsync();
+
+        response.EnsureSuccessStatusCode();
+        Assert.DoesNotContain("Sign in with Microsoft", html);
+    }
+
+    [Fact]
+    public async Task ExternalLogin_WhenEntraExternalLoginDisabled_ReturnsNotFound()
+    {
+        var response = await _client.PostAsync("/account/external-login", new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["provider"] = "Entra",
+            ["returnUrl"] = "/connect/authorize"
+        }));
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
     public async Task Login_Returns_AdminWriteScope()
     {
         var response = await _client.PostAsJsonAsync("/auth/login", new
@@ -449,7 +471,8 @@ public sealed class AuthServerFactory : WebApplicationFactory<Program>
                 ["Auth:Clients:1:Scopes:1"] = "profile",
                 ["Auth:Clients:1:Scopes:2"] = "content.read",
                 ["Auth:Clients:1:Scopes:3"] = "content.write",
-                ["Auth:Clients:1:RedirectUris:0"] = "http://127.0.0.1:5173/callback"
+                ["Auth:Clients:1:RedirectUris:0"] = "http://127.0.0.1:5173/callback",
+                ["Auth:ExternalProviders:Entra:Enabled"] = "false"
             });
         });
     }
