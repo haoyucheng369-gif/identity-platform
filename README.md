@@ -19,13 +19,25 @@ The project focuses on the parts that matter in production systems: token issuan
 flowchart LR
     Browser[React SPA] -->|Authorization Code + PKCE| LocalIdP[AuthFlowLab Auth Server]
     Browser -->|MSAL Authorization Code + PKCE| Entra[Microsoft Entra ID]
-    LocalIdP -->|Discovery + JWKS| Api[AuthFlowLab API Server]
-    Entra -->|Discovery + JWKS| Api
+    LocalIdP -->|Local issuer + JWKS| Api[AuthFlowLab API Server]
+    Entra -->|Entra issuer + JWKS| Api
     Browser -->|Bearer access_token| Api
     Browser -->|Graph access token| Graph[Microsoft Graph /me]
 ```
 
 The API Server uses a policy scheme to route bearer tokens to either `LocalJwt` or `EntraJwt`. Local tokens are validated from the Auth Server discovery document and JWKS; Entra tokens are validated from Microsoft discovery metadata and tenant signing keys.
+
+## Key Concepts
+
+| Concept | Purpose |
+| --- | --- |
+| `access_token` | Sent to the API for authorization. |
+| `id_token` | Sent to the client so it can identify the signed-in user. |
+| `iss` | Identifies the token issuer. |
+| `aud` | Identifies the target API/resource. |
+| `scope` / `scp` | Describes delegated API permissions. |
+| `roles` | Describes role-based access, commonly used for app roles. |
+| JWKS | Publishes public signing keys so APIs can verify JWT signatures. |
 
 ## Local vs Entra
 
@@ -130,7 +142,7 @@ These are development credentials for the local environment. Do not use committe
 
 ## Entra ID
 
-The repository is configured for a protected API registration and a browser SPA registration:
+The repository uses local demo Microsoft Entra registrations for a protected API and a browser SPA:
 
 | Purpose | Name | Client ID |
 | --- | --- | --- |
