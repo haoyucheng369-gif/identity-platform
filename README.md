@@ -15,33 +15,79 @@ The project focuses on enterprise identity boundaries: token issuance, JWT valid
 
 ## Architecture
 
+The platform supports five authentication modes. Each mode has a different token path.
+
+### Mode 1: Local Login
+
 ```mermaid
 flowchart LR
-    subgraph Client
-        Browser[React SPA / Browser]
-    end
+    Browser[React SPA / Browser]
+    Auth[Authorization Server]
+    API[Protected API]
 
-    subgraph Backend
-        Auth[Authorization Server]
-        API[Protected API]
-        BFF[BFF Backend]
-    end
-
-    subgraph ExternalIdentity
-        Entra[Microsoft Entra ID]
-    end
-
-    Browser -. uses .- Auth
-    Browser -. uses .- API
-    Browser -. uses .- BFF
-    Auth -. can federate with .- Entra
-    API -. can validate tokens from .- Auth
-    API -. can validate tokens from .- Entra
-    BFF -. uses .- Auth
-    BFF -. uses .- API
+    Browser -->|1. authorization code + PKCE| Auth
+    Auth -->|2. first-party JWT| Browser
+    Browser -->|3. Bearer first-party JWT| API
 ```
 
-This diagram shows only runtime components and trust boundaries. The individual authentication modes and token paths are separated below.
+### Mode 2: Federated SSO
+
+```mermaid
+flowchart LR
+    Browser[React SPA / Browser]
+    Auth[Authorization Server]
+    Entra[Microsoft Entra ID]
+    API[Protected API]
+
+    Browser -->|1. start local OIDC login| Auth
+    Auth -->|2. external OIDC challenge| Entra
+    Entra -->|3. external identity| Auth
+    Auth -->|4. mapped first-party JWT| Browser
+    Browser -->|5. Bearer first-party JWT| API
+```
+
+### Mode 3: Direct Entra Login
+
+```mermaid
+flowchart LR
+    Browser[React SPA / Browser]
+    Entra[Microsoft Entra ID]
+    API[Protected API]
+
+    Browser -->|1. MSAL login| Entra
+    Entra -->|2. Entra access token| Browser
+    Browser -->|3. Bearer Entra access token| API
+```
+
+### Mode 4: BFF Login
+
+```mermaid
+flowchart LR
+    Browser[React SPA / Browser]
+    BFF[BFF Backend]
+    Auth[Authorization Server]
+    API[Protected API]
+
+    Browser -->|1. login redirect| BFF
+    BFF -->|2. authorization code + PKCE| Auth
+    Auth -->|3. access token to BFF| BFF
+    BFF -->|4. HttpOnly session cookie| Browser
+    Browser -->|5. cookie API request| BFF
+    BFF -->|6. Bearer access token| API
+```
+
+### Mode 5: Client Credentials
+
+```mermaid
+flowchart LR
+    Service[Worker Service]
+    Auth[Authorization Server]
+    API[Protected API]
+
+    Service -->|1. client_id + client_secret| Auth
+    Auth -->|2. service JWT| Service
+    Service -->|3. Bearer service JWT| API
+```
 
 ## Authentication Flows
 
