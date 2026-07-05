@@ -13,9 +13,17 @@ The project focuses on enterprise identity boundaries: token issuance, JWT valid
 - Authorization policies for scopes, roles, service tokens, and API keys.
 - Backend tests, Docker support, and HTTP request collections.
 
-## Architecture
+## Authentication Flows
 
 The platform supports five authentication modes. Each mode has a different token path.
+
+| Mode | Flow | Purpose | Token used by API |
+| --- | --- | --- | --- |
+| 1 | Local login | First-party browser sign-in | Authorization Server JWT |
+| 2 | Federated SSO | Entra proves user identity, local system maps permissions | Authorization Server JWT |
+| 3 | Direct Entra login | SPA uses Entra token directly | Entra access token |
+| 4 | BFF login | Browser keeps tokens out of JavaScript | BFF-held access token |
+| 5 | Client credentials | Service-to-service access | Authorization Server service token |
 
 ### Mode 1: Local Login
 
@@ -87,106 +95,6 @@ flowchart LR
     Service -->|1. client_id + client_secret| Auth
     Auth -->|2. service JWT| Service
     Service -->|3. Bearer service JWT| API
-```
-
-## Authentication Flows
-
-| Flow | Purpose | Token used by API |
-| --- | --- | --- |
-| Local login | First-party browser sign-in | Authorization Server JWT |
-| Federated SSO | Entra proves user identity, local system maps permissions | Authorization Server JWT |
-| Direct Entra login | SPA uses Entra token directly | Entra access token |
-| Client credentials | Service-to-service access | Authorization Server service token |
-| BFF login | Browser keeps tokens out of JavaScript | BFF-held access token |
-
-## End-to-End Flows
-
-### Local Login With PKCE
-
-```mermaid
-sequenceDiagram
-    participant Browser as React SPA / Browser
-    participant Auth as Authorization Server
-    participant API as Protected API
-
-    Browser->>Auth: /connect/authorize with code_challenge
-    Auth-->>Browser: Login page if no Auth cookie
-    Browser->>Auth: Submit username/password
-    Auth-->>Browser: Auth cookie + redirect with authorization code
-    Browser->>Auth: /connect/token with code_verifier
-    Auth-->>Browser: access_token and id_token
-    Browser->>API: Bearer access_token
-    API-->>Browser: Protected content
-```
-
-### BFF Login
-
-```mermaid
-sequenceDiagram
-    participant Browser
-    participant BFF
-    participant Auth as Authorization Server
-    participant API as Protected API
-
-    Browser->>BFF: Start login
-    BFF->>Auth: Authorization code + PKCE
-    Auth-->>BFF: Code callback
-    BFF->>Auth: Exchange code server-side
-    Auth-->>BFF: Access token
-    BFF-->>Browser: HttpOnly session cookie
-    Browser->>BFF: API request with session cookie
-    BFF->>API: Bearer access token
-    API-->>BFF: Protected resource
-    BFF-->>Browser: Response
-```
-
-### Direct Entra Login
-
-```mermaid
-sequenceDiagram
-    participant Browser as React SPA / Browser
-    participant Entra as Microsoft Entra ID
-    participant API as Protected API
-
-    Browser->>Entra: MSAL login redirect
-    Entra-->>Browser: Entra access token
-    Browser->>API: Bearer Entra access token
-    API-->>Browser: Protected content
-```
-
-### Federated SSO Through Auth Server
-
-```mermaid
-sequenceDiagram
-    participant Browser as React SPA / Browser
-    participant Auth as Authorization Server
-    participant Entra as Microsoft Entra ID
-    participant API as Protected API
-
-    Browser->>Auth: /connect/authorize with code_challenge
-    Auth-->>Browser: Login page with Microsoft option
-    Browser->>Auth: Start external login
-    Auth->>Entra: OIDC challenge
-    Entra-->>Auth: External identity
-    Auth-->>Browser: Auth cookie + redirect with authorization code
-    Browser->>Auth: /connect/token with code_verifier
-    Auth-->>Browser: first-party access_token and id_token
-    Browser->>API: Bearer first-party access_token
-    API-->>Browser: Protected content
-```
-
-### Client Credentials
-
-```mermaid
-sequenceDiagram
-    participant Service as Worker Service
-    participant Auth as Authorization Server
-    participant API as Protected API
-
-    Service->>Auth: /connect/token client_credentials
-    Auth-->>Service: service access_token
-    Service->>API: Bearer service access_token
-    API-->>Service: Service-only content
 ```
 
 ## Authorization Model
