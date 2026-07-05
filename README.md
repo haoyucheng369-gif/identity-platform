@@ -17,23 +17,31 @@ The project focuses on enterprise identity boundaries: token issuance, JWT valid
 
 ```mermaid
 flowchart LR
-    Browser[React SPA / Browser]
-    BFF[BFF Backend]
-    Auth[Authorization Server]
-    Entra[Microsoft Entra ID]
-    API[Protected API]
+    subgraph Client
+        Browser[React SPA / Browser]
+    end
 
-    Browser -->|interactive login redirects| Auth
-    Browser -->|BFF session cookie| BFF
-    Browser -->|direct Entra redirect| Entra
-    BFF -->|backchannel token exchange| Auth
-    BFF -->|backchannel API proxy| API
-    Auth -->|optional external sign-in| Entra
-    Browser -->|bearer token calls| API
-    Entra -->|direct access token calls| API
+    subgraph Backend
+        Auth[Authorization Server]
+        API[Protected API]
+        BFF[BFF Backend]
+    end
+
+    subgraph ExternalIdentity
+        Entra[Microsoft Entra ID]
+    end
+
+    Browser -. uses .- Auth
+    Browser -. uses .- API
+    Browser -. uses .- BFF
+    Auth -. can federate with .- Entra
+    API -. can validate tokens from .- Auth
+    API -. can validate tokens from .- Entra
+    BFF -. uses .- Auth
+    BFF -. uses .- API
 ```
 
-This diagram is only the component topology. The individual token flows are separated below so the browser-token and BFF-token models do not get mixed together.
+This diagram shows only runtime components and trust boundaries. The individual authentication modes and token paths are separated below.
 
 ## Authentication Flows
 
