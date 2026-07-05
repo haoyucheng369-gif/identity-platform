@@ -23,17 +23,17 @@ flowchart LR
     Entra[Microsoft Entra ID]
     API[Protected API]
 
-    Browser -->|local login / PKCE| Auth
-    Browser -->|BFF login| BFF
-    BFF -->|authorization code + PKCE| Auth
-    Auth -->|federated SSO| Entra
-    Browser -->|direct Entra login| Entra
-
-    Auth -->|first-party JWT| Browser
-    BFF -->|server-side token session| API
-    Browser -->|bearer token| API
-    Entra -->|access token| API
+    Browser -->|interactive login redirects| Auth
+    Browser -->|BFF session cookie| BFF
+    Browser -->|direct Entra redirect| Entra
+    BFF -->|backchannel token exchange| Auth
+    BFF -->|backchannel API proxy| API
+    Auth -->|optional external sign-in| Entra
+    Browser -->|bearer token calls| API
+    Entra -->|direct access token calls| API
 ```
+
+This diagram is only the component topology. The individual token flows are separated below so the browser-token and BFF-token models do not get mixed together.
 
 ## Authentication Flows
 
@@ -45,7 +45,27 @@ flowchart LR
 | Client credentials | Service-to-service access | Authorization Server service token |
 | BFF login | Browser keeps tokens out of JavaScript | BFF-held access token |
 
-## BFF Flow
+## End-to-End Flows
+
+### Local Login With PKCE
+
+```mermaid
+sequenceDiagram
+    participant Browser as React SPA / Browser
+    participant Auth as Authorization Server
+    participant API as Protected API
+
+    Browser->>Auth: /connect/authorize with code_challenge
+    Auth-->>Browser: Login page if no Auth cookie
+    Browser->>Auth: Submit username/password
+    Auth-->>Browser: Auth cookie + redirect with authorization code
+    Browser->>Auth: /connect/token with code_verifier
+    Auth-->>Browser: access_token and id_token
+    Browser->>API: Bearer access_token
+    API-->>Browser: Protected content
+```
+
+### BFF Login
 
 ```mermaid
 sequenceDiagram
@@ -64,6 +84,55 @@ sequenceDiagram
     BFF->>API: Bearer access token
     API-->>BFF: Protected resource
     BFF-->>Browser: Response
+```
+
+### Direct Entra Login
+
+```mermaid
+sequenceDiagram
+    participant Browser as React SPA / Browser
+    participant Entra as Microsoft Entra ID
+    participant API as Protected API
+
+    Browser->>Entra: MSAL login redirect
+    Entra-->>Browser: Entra access token
+    Browser->>API: Bearer Entra access token
+    API-->>Browser: Protected content
+```
+
+### Federated SSO Through Auth Server
+
+```mermaid
+sequenceDiagram
+    participant Browser as React SPA / Browser
+    participant Auth as Authorization Server
+    participant Entra as Microsoft Entra ID
+    participant API as Protected API
+
+    Browser->>Auth: /connect/authorize with code_challenge
+    Auth-->>Browser: Login page with Microsoft option
+    Browser->>Auth: Start external login
+    Auth->>Entra: OIDC challenge
+    Entra-->>Auth: External identity
+    Auth-->>Browser: Auth cookie + redirect with authorization code
+    Browser->>Auth: /connect/token with code_verifier
+    Auth-->>Browser: first-party access_token and id_token
+    Browser->>API: Bearer first-party access_token
+    API-->>Browser: Protected content
+```
+
+### Client Credentials
+
+```mermaid
+sequenceDiagram
+    participant Service as Worker Service
+    participant Auth as Authorization Server
+    participant API as Protected API
+
+    Service->>Auth: /connect/token client_credentials
+    Auth-->>Service: service access_token
+    Service->>API: Bearer service access_token
+    API-->>Service: Service-only content
 ```
 
 ## Authorization Model
