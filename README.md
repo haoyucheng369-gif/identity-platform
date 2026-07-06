@@ -100,6 +100,99 @@ flowchart LR
     Service -->|3. Bearer service JWT| API
 ```
 
+## Detailed Flow Sequences
+
+These sequence diagrams show the request order behind each mode.
+
+### Mode 1: Local Login Sequence
+
+```mermaid
+sequenceDiagram
+    participant Browser as React SPA / Browser
+    participant Auth as Authorization Server
+    participant API as Protected API
+
+    Browser->>Auth: /connect/authorize with code_challenge
+    Auth-->>Browser: Login page if no Auth cookie
+    Browser->>Auth: Submit username/password
+    Auth-->>Browser: Auth cookie + redirect with authorization code
+    Browser->>Auth: /connect/token with code_verifier
+    Auth-->>Browser: access_token and id_token
+    Browser->>API: Bearer access_token
+    API-->>Browser: Protected content
+```
+
+### Mode 2: Federated SSO Sequence
+
+```mermaid
+sequenceDiagram
+    participant Browser as React SPA / Browser
+    participant Auth as Authorization Server
+    participant Entra as Microsoft Entra ID
+    participant API as Protected API
+
+    Browser->>Auth: /connect/authorize with code_challenge
+    Auth-->>Browser: Login page with Microsoft option
+    Browser->>Auth: Start external login
+    Auth->>Entra: OIDC challenge
+    Entra-->>Auth: External identity
+    Auth-->>Browser: Auth cookie + redirect with authorization code
+    Browser->>Auth: /connect/token with code_verifier
+    Auth-->>Browser: first-party access_token and id_token
+    Browser->>API: Bearer first-party access_token
+    API-->>Browser: Protected content
+```
+
+### Mode 3: Direct Entra Login Sequence
+
+```mermaid
+sequenceDiagram
+    participant Browser as React SPA / Browser
+    participant Entra as Microsoft Entra ID
+    participant API as Protected API
+
+    Browser->>Entra: MSAL login redirect
+    Entra-->>Browser: Entra access token
+    Browser->>API: Bearer Entra access token
+    API-->>Browser: Protected content
+```
+
+### Mode 4: BFF Login Sequence
+
+```mermaid
+sequenceDiagram
+    participant Browser as React SPA / Browser
+    participant BFF as BFF Backend
+    participant Auth as Authorization Server
+    participant API as Protected API
+
+    Browser->>BFF: /bff/login
+    BFF-->>Browser: Redirect to /connect/authorize with BFF code_challenge
+    Browser->>Auth: Follow redirect and sign in
+    Auth-->>BFF: Callback with authorization code
+    BFF->>Auth: /connect/token with client_secret and BFF code_verifier
+    Auth-->>BFF: access_token
+    BFF-->>Browser: HttpOnly session cookie
+    Browser->>BFF: API request with session cookie
+    BFF->>API: Bearer access_token
+    API-->>BFF: Protected content
+    BFF-->>Browser: Response
+```
+
+### Mode 5: Client Credentials Sequence
+
+```mermaid
+sequenceDiagram
+    participant Service as Worker Service
+    participant Auth as Authorization Server
+    participant API as Protected API
+
+    Service->>Auth: /connect/token with client_id and client_secret
+    Auth-->>Service: service access_token
+    Service->>API: Bearer service access_token
+    API-->>Service: Service-only content
+```
+
 ## Authorization Model
 
 | Access type | Example |
