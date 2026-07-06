@@ -33,9 +33,11 @@ flowchart LR
     Auth[Authorization Server]
     API[Protected API]
 
-    Browser -->|1. authorization code + PKCE| Auth
-    Auth -->|2. first-party JWT| Browser
-    Browser -->|3. Bearer first-party JWT| API
+    Browser -->|1. authorize + login with PKCE| Auth
+    Auth -->|2. authorization code| Browser
+    Browser -->|3. code + code_verifier| Auth
+    Auth -->|4. first-party JWT| Browser
+    Browser -->|5. Bearer first-party JWT| API
 ```
 
 ### Mode 2: Federated SSO
@@ -47,11 +49,13 @@ flowchart LR
     Entra[Microsoft Entra ID]
     API[Protected API]
 
-    Browser -->|1. start local OIDC login| Auth
+    Browser -->|1. authorize + login with PKCE| Auth
     Auth -->|2. external OIDC challenge| Entra
     Entra -->|3. external identity| Auth
-    Auth -->|4. mapped first-party JWT| Browser
-    Browser -->|5. Bearer first-party JWT| API
+    Auth -->|4. authorization code| Browser
+    Browser -->|5. code + code_verifier| Auth
+    Auth -->|6. mapped first-party JWT| Browser
+    Browser -->|7. Bearer first-party JWT| API
 ```
 
 ### Mode 3: Direct Entra Login
@@ -79,12 +83,13 @@ flowchart LR
     Browser -->|1. start login| BFF
     BFF -->|2. redirect with BFF-generated code_challenge| Browser
     Browser -->|3. follow redirect and sign in| Auth
-    Auth -->|4. callback with authorization code| BFF
-    BFF -->|5. exchange code with client_secret + BFF code_verifier| Auth
-    Auth -->|6. access token to BFF| BFF
-    BFF -->|7. HttpOnly session cookie| Browser
-    Browser -->|8. cookie API request| BFF
-    BFF -->|9. Bearer access token| API
+    Auth -->|4. redirect to BFF callback with code| Browser
+    Browser -->|5. callback with code and state| BFF
+    BFF -->|6. exchange code with client_id + client_secret + BFF code_verifier| Auth
+    Auth -->|7. access token to BFF| BFF
+    BFF -->|8. HttpOnly session cookie| Browser
+    Browser -->|9. cookie API request| BFF
+    BFF -->|10. Bearer access token| API
 ```
 
 ### Mode 5: Client Credentials
@@ -169,8 +174,9 @@ sequenceDiagram
     Browser->>BFF: /bff/login
     BFF-->>Browser: Redirect to /connect/authorize with BFF code_challenge
     Browser->>Auth: Follow redirect and sign in
-    Auth-->>BFF: Callback with authorization code
-    BFF->>Auth: /connect/token with client_secret and BFF code_verifier
+    Auth-->>Browser: Redirect to BFF callback with authorization code
+    Browser->>BFF: /bff/callback with code and state
+    BFF->>Auth: /connect/token with client_id, client_secret, and BFF code_verifier
     Auth-->>BFF: access_token
     BFF-->>Browser: HttpOnly session cookie
     Browser->>BFF: API request with session cookie
