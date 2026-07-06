@@ -76,12 +76,15 @@ flowchart LR
     Auth[Authorization Server]
     API[Protected API]
 
-    Browser -->|1. login redirect| BFF
-    BFF -->|2. authorization code + PKCE| Auth
-    Auth -->|3. access token to BFF| BFF
-    BFF -->|4. HttpOnly session cookie| Browser
-    Browser -->|5. cookie API request| BFF
-    BFF -->|6. Bearer access token| API
+    Browser -->|1. start login| BFF
+    BFF -->|2. redirect with BFF-generated code_challenge| Browser
+    Browser -->|3. follow redirect and sign in| Auth
+    Auth -->|4. callback with authorization code| BFF
+    BFF -->|5. exchange code with client_secret + BFF code_verifier| Auth
+    Auth -->|6. access token to BFF| BFF
+    BFF -->|7. HttpOnly session cookie| Browser
+    Browser -->|8. cookie API request| BFF
+    BFF -->|9. Bearer access token| API
 ```
 
 ### Mode 5: Client Credentials
